@@ -1,29 +1,31 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import pickle
-import pandas as pd
-import os
-
-app = Flask(__name__)
-CORS(app)
-
-# Load model
-model = pickle.load(open("van_model.pkl", "rb"))
-
-@app.route("/")
-def home():
-    return "Van Recommendation API is running"
-
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.json
-    df = pd.DataFrame(data)
+    try:
+        data = request.get_json()
 
-    scores = model.predict(df)
+        # convert safely
+        df = pd.DataFrame(data)
 
-    return jsonify({"scores": scores.tolist()})
+        # force correct column order (IMPORTANT)
+        expected_cols = [
+            "distance_to_user_km",
+            "eta_min",
+            "seats_available",
+            "route_match_score"
+        ]
 
-# IMPORTANT for Railway
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+        df = df[expected_cols]
+
+        # ensure numeric types
+        df = df.astype(float)
+
+        preds = model.predict(df)
+
+        return jsonify({
+            "scores": preds.tolist()
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
