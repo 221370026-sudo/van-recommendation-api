@@ -23,13 +23,16 @@ def home():
     return "Van Recommendation API is running"
 
 # ---------------------------
-# PREDICT ROUTE (FIXED)
+# PREDICT ROUTE
 # ---------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
-        # get JSON input
+        # get JSON input (must be list of dicts)
         data = request.get_json(force=True)
+
+        if not isinstance(data, list) or len(data) == 0:
+            return jsonify({"error": "Input must be a non-empty JSON array"}), 400
 
         # convert to DataFrame
         df = pd.DataFrame(data)
@@ -48,17 +51,23 @@ def predict():
             "route_match_score"
         ]
 
-        # enforce correct order
-        df = df[required_cols]
+        # ensure all columns are present
+        missing = [col for col in required_cols if col not in df.columns]
+        if missing:
+            return jsonify({"error": f"Missing required fields: {missing}"}), 400
 
-        # ensure numeric format
-        df = df.astype(float)
+        # enforce correct order + numeric format
+        df = df[required_cols].astype(float)
 
-        # prediction using probability (BEST for ranking)
-        scores = model.predict_proba(df)[:, 1]
+        # XGBRanker => predict() (not predict_proba)
+        # If model supports predict_proba, use probability score
+        if hasattr(model, "predict_proba"):
+            scores = model.predict_proba(df)[:, 1]
+        else:
+            scores = model.predict(df)
 
         return jsonify({
-            "scores": scores.tolist()
+            "scores": [float(s) for s in scores]
         })
 
     except Exception as e:
@@ -72,4 +81,3 @@ def predict():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-    
