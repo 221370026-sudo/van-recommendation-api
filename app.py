@@ -4,45 +4,72 @@ import pickle
 import pandas as pd
 import os
 
-# IMPORTANT: CREATE APP FIRST
+# ---------------------------
+# INIT APP
+# ---------------------------
 app = Flask(__name__)
 CORS(app)
 
+# ---------------------------
 # LOAD MODEL
+# ---------------------------
 model = pickle.load(open("van_model.pkl", "rb"))
 
+# ---------------------------
 # HOME ROUTE
+# ---------------------------
 @app.route("/")
 def home():
     return "Van Recommendation API is running"
 
-# PREDICT ROUTE
+# ---------------------------
+# PREDICT ROUTE (FIXED)
+# ---------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
-        data = request.get_json()
+        # get JSON input
+        data = request.get_json(force=True)
 
+        # convert to DataFrame
         df = pd.DataFrame(data)
 
-        expected_cols = [
+        # REQUIRED COLUMNS (must match training exactly)
+        required_cols = [
+            "user_lat",
+            "user_lng",
+            "dest_lat",
+            "dest_lng",
+            "van_lat",
+            "van_lng",
             "distance_to_user_km",
             "eta_min",
             "seats_available",
             "route_match_score"
         ]
 
-        df = df[expected_cols]
+        # enforce correct order
+        df = df[required_cols]
+
+        # ensure numeric format
         df = df.astype(float)
 
-        preds = model.predict(df)
+        # prediction using probability (BEST for ranking)
+        scores = model.predict_proba(df)[:, 1]
 
-        return jsonify({"scores": preds.tolist()})
+        return jsonify({
+            "scores": scores.tolist()
+        })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
-
-# RAILWAY ENTRY POINT
+# ---------------------------
+# RUN SERVER (RAILWAY)
+# ---------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+    
